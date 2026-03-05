@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 SPACY_MODEL = "en_core_web_sm"
 
-
 class Triple(NamedTuple):
     subject: str
     relation: str
