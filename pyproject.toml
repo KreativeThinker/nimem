@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "gliner2",
-    "fastcoref>=2.0",
+    "stanza>=1.7.0",
+    "spacy-experimental @ git+https://github.com/explosion/spacy-experimental.git",
     "infinity-emb[optimum]>=0.0.1",
     "falkordblite>=0.0.1",
     "numpy>=1.20.0",
