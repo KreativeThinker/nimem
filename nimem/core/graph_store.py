@@ -2,22 +2,32 @@ from typing import List, Any, Dict
 from returns.result import Result, safe
 import time
 import uuid
+import re
 import logging
 
-# FalkorDBLite python client
 try:
     logging.info("Attempting to import redislite.falkordb_client...")
     from redislite.falkordb_client import FalkorDB
 except ImportError:
     FalkorDB = None
+DEFAULT_DB_PATH = './nimem.db'
+DEFAULT_GRAPH_NAME = 'nimem_memory'
 
-def get_graph_client(db_path='./nimem.db', graph_name='nimem_memory'):
+
+def get_graph_client(db_path: str = DEFAULT_DB_PATH, graph_name: str = DEFAULT_GRAPH_NAME):
     if FalkorDB is None:
         raise ImportError("falkordblite library not installed")
     
-    # FalkorDBLite works with a local file
     db = FalkorDB(db_path)
     return db.select_graph(graph_name)
+
+_RELATION_RE = re.compile(r'^[A-Z][A-Z0-9_]*$')
+
+def _sanitize_relation(relation: str) -> str:
+    upper = relation.upper()
+    if not _RELATION_RE.match(upper):
+        raise ValueError(f"Invalid relation name: {relation}")
+    return upper
 
 @safe
 def add_fact(
@@ -25,21 +35,22 @@ def add_fact(
     relation: str, 
     obj: str, 
     valid_at: float = None,
-    graph_name: str = 'nimem_memory'
+    db_path: str = DEFAULT_DB_PATH,
+    graph_name: str = DEFAULT_GRAPH_NAME
 ) -> bool:
     """
     Adds a fact to the graph with simple soft-delete metadata.
     """
-    g = get_graph_client()
+    g = get_graph_client(db_path, graph_name)
+    safe_rel = _sanitize_relation(relation)
     
     if valid_at is None:
         valid_at = time.time()
     
-    
     query = f"""
     MERGE (s:Entity {{name: $subject}})
     MERGE (o:Entity {{name: $obj}})
-    CREATE (s)-[r:{relation.upper()} {{
+    CREATE (s)-[r:{safe_rel} {{
         valid_at: {valid_at},
         id: $edge_id
     }}]->(o)
@@ -60,17 +71,20 @@ def expire_facts(
     subject: str,
     relation: str,
     invalidated_at: float = None,
-    graph_name: str = 'nimem_memory'
+    db_path: str = DEFAULT_DB_PATH,
+    graph_name: str = DEFAULT_GRAPH_NAME
 ) -> int:
     """
     Expires existing active facts by setting invalidated_at.
     """
-    g = get_graph_client()
+    g = get_graph_client(db_path, graph_name)
+    safe_rel = _sanitize_relation(relation)
+    
     if invalidated_at is None:
         invalidated_at = time.time()
     
     query = f"""
-    MATCH (s:Entity {{name: $subject}})-[r:{relation.upper()}]->(o)
+    MATCH (s:Entity {{name: $subject}})-[r:{safe_rel}]->(o)
     WHERE r.invalidated_at IS NULL
     SET r.invalidated_at = {invalidated_at}
     RETURN count(r)
@@ -93,13 +107,13 @@ def expire_facts(
 def query_valid_facts(
     subject: str, 
     at_time: float = None,
-    graph_name: str = 'nimem_memory'
+    db_path: str = DEFAULT_DB_PATH,
+    graph_name: str = DEFAULT_GRAPH_NAME
 ) -> List[Dict[str, Any]]:
     """
     Queries facts about a subject that are active (not invalidated).
     """
-    g = get_graph_client()
-    
+    g = get_graph_client(db_path, graph_name)
     
     if at_time is None:
         query = f"""
@@ -108,7 +122,6 @@ def query_valid_facts(
         RETURN type(r) as relation, o.name as object
         """
     else:
-        # Time travel query
         query = f"""
         MATCH (s:Entity {{name: $subject}})-[r]->(o:Entity)
         WHERE r.valid_at <= {at_time} 
@@ -128,11 +141,14 @@ def query_valid_facts(
     return output
 
 @safe
-def get_all_entities(graph_name: str = 'nimem_memory') -> List[str]:
+def get_all_entities(
+    db_path: str = DEFAULT_DB_PATH,
+    graph_name: str = DEFAULT_GRAPH_NAME
+) -> List[str]:
     """
     Retrieves all unique entity names from the graph.
     """
-    g = get_graph_client()
+    g = get_graph_client(db_path, graph_name)
     query = "MATCH (n:Entity) RETURN n.name"
     res = g.query(query)
     

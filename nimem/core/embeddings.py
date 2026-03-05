@@ -7,9 +7,6 @@ import logging
 import asyncio
 
 try:
-    # Depending on how infinity is installed, it might be used as a library or server.
-    # The user notes mention "Infinity-emb" library usage.
-    # or fall back to sentence-transformers if strictly needed, but NOTES says Infinity.
     logging.info("Attempting to import infinity_emb...")
     from infinity_emb import EngineArgs, AsyncEmbeddingEngine
 except ImportError:
@@ -32,6 +29,10 @@ class EmbeddingService:
             cls._instance = AsyncEmbeddingEngine.from_args(engine_args)
         return cls._instance
 
+    @classmethod
+    def reset(cls):
+        cls._instance = None
+
 async def _embed_async(texts: List[str]) -> np.ndarray:
     engine = EmbeddingService.get_instance()
     async with engine: 
@@ -44,5 +45,4 @@ def embed_texts(texts: List[str]) -> np.ndarray:
     Embeds a list of texts using Infinity-emb.
     Returns Result[np.ndarray, Exception].
     """
-    # Pragmatic sync wrapper
     return asyncio.run(_embed_async(texts))

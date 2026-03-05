@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from returns.result import Result, safe
 import numpy as np
 import logging
@@ -9,12 +9,11 @@ try:
 except ImportError:
     HDBSCAN = None
 
-from . import embeddings
-
 @safe
-def perform_clustering(texts: List[str], min_cluster_size: int = 2) -> Result[Dict[int, List[str]], Exception]:
+def perform_clustering(vectors: np.ndarray, texts: List[str], min_cluster_size: int = 2) -> Dict[int, List[str]]:
     """
-    Clusters a list of texts using Infinity Embeddings + FastHDBSCAN.
+    Clusters pre-computed embedding vectors and maps them back to their text labels.
+    Embedding is the caller's responsibility.
     """
     if not texts:
         return {}
@@ -22,27 +21,20 @@ def perform_clustering(texts: List[str], min_cluster_size: int = 2) -> Result[Di
     if HDBSCAN is None:
         raise ImportError("fast_hdbscan is not installed.")
 
-    def cluster_vectors(vectors: np.ndarray) -> Dict[int, List[str]]:
-        clusterer = HDBSCAN(min_cluster_size=min_cluster_size)
-        labels = clusterer.fit_predict(vectors)
-        
-        clusters: Dict[int, List[str]] = {}
-        for text, label in zip(texts, labels):
-            if label == -1:
-                continue
-                
-            if label not in clusters:
-                clusters[label] = []
-            clusters[label].append(text)
-        return clusters
-
-    return embeddings.embed_texts(texts).map(cluster_vectors)
+    clusterer = HDBSCAN(min_cluster_size=min_cluster_size)
+    labels = clusterer.fit_predict(vectors)
+    
+    clusters: Dict[int, List[str]] = {}
+    for text, label in zip(texts, labels):
+        if label == -1:
+            continue
+        if label not in clusters:
+            clusters[label] = []
+        clusters[label].append(text)
+    return clusters
 
 def generate_topic_name(texts: List[str]) -> str:
     """
-    Simple heuristic or LLM call to name the cluster.
-    For non-LLM, we can use the most central term or just 'Topic {hash}'.
-    Let's use a concatenation of top 3 terms or just 'Topic: A, B, C'
+    Simple heuristic to name the cluster.
     """
-    # Simply join the first 3 unique items
     return "Topic: " + ", ".join(list(set(texts))[:3])

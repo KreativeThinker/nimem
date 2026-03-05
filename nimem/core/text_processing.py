@@ -48,11 +48,8 @@ def extract_triplets(text: str) -> List[Triple]:
     # We assume 'extract_relations' method exists on the loaded model.
     try:
         results = model.extract_relations(text, relation_types)
-    except AttributeError:
-        # Fallback if the model class doesn't strictly match the v2 API snippet
-        # but is a standard GLiNER class.
-        logging.warning("GLiNER model does not support extract_relations. Returning empty.")
-        return []
+    except AttributeError as e:
+        raise RuntimeError(f"GLiNER model does not support extract_relations: {e}") from e
     
     triplets = []
     # Parse the output: {'relation_extraction': {'works_for': [('John', 'Apple')], ...}}
