@@ -4,7 +4,7 @@ from typing import List, Tuple, NamedTuple, Set
 from functools import lru_cache
 
 import spacy
-from gliner import GLiNER
+from gliner2 import GLiNER2
 from returns.result import Result, safe
 
 from . import schema
@@ -12,6 +12,8 @@ from . import schema
 logger = logging.getLogger(__name__)
 
 SPACY_MODEL = "en_core_web_sm"
+GLINER2_MODEL = "fastino/gliner2-multi-v1"
+
 
 class Triple(NamedTuple):
     subject: str
@@ -43,8 +45,8 @@ def get_spacy_model():
 
 @lru_cache(maxsize=1)
 def get_gliner_model():
-    logger.info("Loading GLiNER model: urchade/gliner_small-v2.1")
-    return GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+    logger.info(f"Loading GLiNER2 model: {GLINER2_MODEL}")
+    return GLiNER2.from_pretrained(GLINER2_MODEL)
 
 
 @lru_cache(maxsize=1)
@@ -60,7 +62,32 @@ def _infer_relation(entity1_label: str, entity2_label: str) -> str | None:
     return ENTITY_RELATION_MAP.get(key)
 
 
+def _find_entity_positions(text: str, entities: List[dict]) -> List[dict]:
+    """Find character positions for entities in text."""
+    result = []
+    for entity in entities:
+        name = entity["text"]
+        label = entity["label"]
+        start = 0
+        while True:
+            pos = text.find(name, start)
+            if pos == -1:
+                break
+            result.append(
+                {
+                    "text": name,
+                    "label": label,
+                    "start": pos,
+                    "end": pos + len(name),
+                }
+            )
+            start = pos + len(name)
+    return result
+
+
 def _extract_relations_from_entities(text: str, entities: List[dict]) -> List[Triple]:
+    entities_with_pos = _find_entity_positions(text, entities)
+
     triplets = []
     sentences = re.split(r"[.!?]+", text)
     sentence_starts = [0]
@@ -79,7 +106,7 @@ def _extract_relations_from_entities(text: str, entities: List[dict]) -> List[Tr
         return len(sentence_starts) - 1
 
     sentence_entities: dict[int, List[dict]] = {}
-    for entity in entities:
+    for entity in entities_with_pos:
         sent_idx = get_sentence_idx(entity["start"])
         if sent_idx not in sentence_entities:
             sentence_entities[sent_idx] = []
@@ -101,15 +128,6 @@ def _extract_relations_from_entities(text: str, entities: List[dict]) -> List[Tr
                     triplets.append(Triple(e2["text"], relation_rev, e1["text"]))
 
     return triplets
-
-
-def _get_noun_phrase(token) -> str:
-    parts = []
-    for child in token.lefts:
-        if child.dep_ in ("compound", "amod", "poss") and child.dep_ != "det":
-            parts.append(child.text)
-    parts.append(token.text)
-    return " ".join(parts)
 
 
 def _extract_verb_relations(text: str, known_entities: Set[str]) -> List[Triple]:
@@ -192,9 +210,14 @@ def _extract_verb_relations(text: str, known_entities: Set[str]) -> List[Triple]
 def extract_triplets(text: str) -> List[Triple]:
     model = get_gliner_model()
     labels = list(schema.ENTITIES.keys())
-    entities = model.predict_entities(text, labels, threshold=0.5)
-    logger.debug(f"Extracted entities: {entities}")
+    result = model.extract_entities(text, labels)
 
+    entities = []
+    for label, values in result.get("entities", {}).items():
+        for v in values:
+            entities.append({"text": v, "label": label})
+
+    logger.debug(f"Extracted entities: {entities}")
     known_entities = {e["text"] for e in entities}
     triplets_heuristic = _extract_relations_from_entities(text, entities)
     triplets_verb = _extract_verb_relations(text, known_entities)
