@@ -1,3 +1,16 @@
+SPACY_MODEL = "en_core_web_md"
+
+SPACY_LABEL_MAP = {
+    "PERSON": "person",
+    "ORG": "organization",
+    "GPE": "location",
+    "LOC": "location",
+    "FAC": "location",
+    "EVENT": "event",
+    "DATE": "date",
+    "NORP": "organization",
+}
+
 ENTITIES = {
     "person": "People, characters, or user names",
     "organization": "Companies, groups, and institutions",
@@ -6,6 +19,15 @@ ENTITIES = {
     "date": "Date references",
     "concept": "Abstract concepts or ideas",
 }
+
+ENTITY_RELATION_MAP = {
+    ("person", "organization"): "works_for",
+    ("person", "location"): "located_in",
+    ("person", "person"): "knows",
+    ("organization", "location"): "located_in",
+    ("event", "location"): "happened_at",
+}
+
 
 RELATIONS = {
     "works_for": "Employment or professional affiliation",
@@ -16,7 +38,7 @@ RELATIONS = {
     "manages": "Management or leadership relationship",
     "participated_in": "Involvement in an event",
     "happened_at": "Temporal or spatial occurrence of an event",
-    "related_to": "General relationship when strictly defined ones don't fit",
+    "related_to": "General relationship when two people or two organizations or organization and person are vaguely related and the strictly defined ones don't fit",
     "created": "Creation of something (product, work, etc.)",
     "worked_with": "Professional collaboration between people",
 }

@@ -7,7 +7,7 @@ from .core import text_processing
 from .core import embeddings
 from .core import graph_store
 from .core import clustering
-from .core import schema
+from .core.schema import CARDINALITY
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def ingest_text(text: str, use_coref: bool = False) -> Result[str, Exception]:
         for tri in triplets:
             logger.info(f"Adding: {tri.subject} -[{tri.relation}]-> {tri.object}")
 
-            cardinality = schema.CARDINALITY.get(tri.relation, "MANY")
+            cardinality = CARDINALITY.get(tri.relation, "MANY")
             if cardinality == "ONE":
                 logger.info(f"Relation '{tri.relation}' is 1-to-1. Expiring old facts.")
                 res_expire = graph_store.expire_facts(tri.subject, tri.relation)

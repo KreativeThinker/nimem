@@ -5,7 +5,7 @@ description = "A memory system with NLP-powered fact extraction and graph storag
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "gliner>=0.2.0",
+    "gliner2>=0.2.0",
     "fastcoref>=2.0",
     "infinity-emb[torch]>=0.0.1",
     "falkordblite>=0.0.1",

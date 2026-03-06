@@ -4,28 +4,20 @@ from typing import List, Tuple, NamedTuple, Set
 from functools import lru_cache
 
 import spacy
-from gliner import GLiNER
 from returns.result import Result, safe
 
-from . import schema
+from .schema import (
+    SPACY_MODEL, SPACY_LABEL_MAP, ENTITY_RELATION_MAP,
+    RELATIONS, VERB_TO_RELATION, WITH_PREPOSITIONS,
+)
 
 logger = logging.getLogger(__name__)
 
-SPACY_MODEL = "en_core_web_sm"
 
 class Triple(NamedTuple):
     subject: str
     relation: str
     object: str
-
-
-ENTITY_RELATION_MAP = {
-    ("person", "organization"): "works_for",
-    ("person", "location"): "located_in",
-    ("person", "person"): "knows",
-    ("organization", "location"): "located_in",
-    ("event", "location"): "happened_at",
-}
 
 
 @lru_cache(maxsize=1)
@@ -43,8 +35,10 @@ def get_spacy_model():
 
 @lru_cache(maxsize=1)
 def get_gliner_model():
-    logger.info("Loading GLiNER model: urchade/gliner_small-v2.1")
-    return GLiNER.from_pretrained("urchade/gliner_small-v2.1")
+    from gliner2 import GLiNER2
+
+    logger.info("Loading GLiNER model: fastino/gliner2-multi-v1")
+    return GLiNER2.from_pretrained("fastino/gliner2-multi-v1")
 
 
 @lru_cache(maxsize=1)
@@ -89,13 +83,13 @@ def _extract_relations_from_entities(text: str, entities: List[dict]) -> List[Tr
         for i, e1 in enumerate(sent_entities):
             for e2 in sent_entities[i + 1 :]:
                 relation = _infer_relation(e1["label"], e2["label"])
-                if relation and relation in schema.RELATIONS:
+                if relation and relation in RELATIONS:
                     triplets.append(Triple(e1["text"], relation, e2["text"]))
 
                 relation_rev = _infer_relation(e2["label"], e1["label"])
                 if (
                     relation_rev
-                    and relation_rev in schema.RELATIONS
+                    and relation_rev in RELATIONS
                     and relation_rev != relation
                 ):
                     triplets.append(Triple(e2["text"], relation_rev, e1["text"]))
@@ -122,7 +116,7 @@ def _extract_verb_relations(text: str, known_entities: Set[str]) -> List[Triple]
             continue
 
         verb_lemma = token.lemma_.lower()
-        relation = schema.VERB_TO_RELATION.get(verb_lemma)
+        relation = VERB_TO_RELATION.get(verb_lemma)
         if not relation:
             continue
 
@@ -139,7 +133,7 @@ def _extract_verb_relations(text: str, known_entities: Set[str]) -> List[Triple]
                 prep_text = child.text.lower()
                 for pobj in child.children:
                     if pobj.dep_ == "pobj":
-                        if prep_text in schema.WITH_PREPOSITIONS:
+                        if prep_text in WITH_PREPOSITIONS:
                             with_objects.append(pobj)
                         else:
                             prep_objects.append(pobj)
@@ -188,11 +182,46 @@ def _extract_verb_relations(text: str, known_entities: Set[str]) -> List[Triple]
     return triplets
 
 
-@safe
-def extract_triplets(text: str) -> List[Triple]:
+def _extract_gliner2_relations(text: str) -> List[Triple]:
     model = get_gliner_model()
-    labels = list(schema.ENTITIES.keys())
-    entities = model.predict_entities(text, labels, threshold=0.5)
+    relation_labels = list(RELATIONS.keys())
+    result = model.extract_relations(text, relation_labels)
+
+    triplets = []
+    extractions = result.get("relation_extraction", {})
+    for relation, pairs in extractions.items():
+        if relation not in RELATIONS:
+            continue
+        for pair in pairs:
+            if isinstance(pair, tuple):
+                triplets.append(Triple(pair[0], relation, pair[1]))
+            elif isinstance(pair, dict):
+                head = pair.get("head", {}).get("text", "")
+                tail = pair.get("tail", {}).get("text", "")
+                if head and tail:
+                    triplets.append(Triple(head, relation, tail))
+
+    return triplets
+
+
+@safe
+def extract_triplets(text: str, use_gliner2: bool = False) -> List[Triple]:
+    if use_gliner2:
+        triplets = _extract_gliner2_relations(text)
+        logger.debug(f"GLiNER2 triplets: {triplets}")
+        return triplets
+
+    nlp = get_spacy_model()
+    doc = nlp(text)
+    entities = [
+        {
+            "text": ent.text,
+            "label": SPACY_LABEL_MAP.get(ent.label_, ent.label_.lower()),
+            "start": ent.start_char,
+        }
+        for ent in doc.ents
+        if ent.label_ in SPACY_LABEL_MAP
+    ]
     logger.debug(f"Extracted entities: {entities}")
 
     known_entities = {e["text"] for e in entities}
@@ -219,13 +248,15 @@ def resolve_coreferences(text: str) -> str:
 
 
 def process_text_pipeline(
-    text: str, use_coref: bool = False
+    text: str, use_coref: bool = False, use_gliner2: bool = False
 ) -> Result[Tuple[str, List[Triple]], Exception]:
     if use_coref:
         return resolve_coreferences(text).bind(
-            lambda resolved: extract_triplets(resolved).map(
+            lambda resolved: extract_triplets(resolved, use_gliner2=use_gliner2).map(
                 lambda triplets: (resolved, triplets)
             )
         )
     else:
-        return extract_triplets(text).map(lambda triplets: (text, triplets))
+        return extract_triplets(text, use_gliner2=use_gliner2).map(
+            lambda triplets: (text, triplets)
+        )
