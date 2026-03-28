@@ -7,6 +7,14 @@ class Triple(NamedTuple):
     object: str
 
 
+class Entity(NamedTuple):
+    text: str
+    label: str
+    start: int = 0
+    end: int = 0
+    confidence: float = 1.0
+
+
 SPACY_MODEL = "en_core_web_md"
 
 SPACY_LABEL_MAP = {

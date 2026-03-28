@@ -2,14 +2,16 @@ import pytest
 from unittest.mock import MagicMock, patch
 from nimem.core import text_processing
 from nimem.core import relation_extraction
+from nimem.core import entity_recognition
 from nimem.core import coreference
+from nimem.core import model_loader
 from returns.result import Success, Failure
 
 
 @pytest.fixture
 def mock_spacy():
-    relation_extraction.get_spacy_model.cache_clear()
-    with patch("nimem.core.relation_extraction.get_spacy_model") as mock_get:
+    model_loader.get_model.cache_clear()
+    with patch("nimem.core.model_loader.get_model") as mock_get:
         nlp = MagicMock()
         mock_get.return_value = nlp
 
@@ -33,13 +35,13 @@ def mock_spacy():
         nlp.return_value = doc
 
         yield nlp
-    relation_extraction.get_spacy_model.cache_clear()
+    model_loader.get_model.cache_clear()
 
 
 @pytest.fixture
 def mock_gliner():
-    relation_extraction.get_gliner_model.cache_clear()
-    with patch("nimem.core.relation_extraction.get_gliner_model") as mock_get:
+    model_loader.get_model.cache_clear()
+    with patch("nimem.core.model_loader.get_model") as mock_get:
         instance = MagicMock()
         mock_get.return_value = instance
         instance.extract_relations.return_value = {
@@ -49,13 +51,13 @@ def mock_gliner():
             }
         }
         yield instance
-    relation_extraction.get_gliner_model.cache_clear()
+    model_loader.get_model.cache_clear()
 
 
 @pytest.fixture
 def mock_coref():
-    coreference.get_fastcoref_model.cache_clear()
-    with patch("nimem.core.coreference.get_fastcoref_model") as mock_get:
+    model_loader.get_model.cache_clear()
+    with patch("nimem.core.model_loader.get_model") as mock_get:
         instance = MagicMock()
         mock_get.return_value = instance
 
@@ -66,48 +68,64 @@ def mock_coref():
         instance.predict.return_value = [mock_pred]
 
         yield instance
-    coreference.get_fastcoref_model.cache_clear()
+    model_loader.get_model.cache_clear()
 
 
 def test_extract_triplets_heuristic(mock_spacy):
-    triplets = text_processing.extract_triplets("Alice works at Google").unwrap()
-    mock_spacy.assert_called_once()
-    assert len(triplets) > 0
+    with patch("nimem.core.model_loader.get_model", return_value=mock_spacy):
+        model_loader.get_model.cache_clear()
+        triplets = text_processing.extract_triplets("Alice works at Google").unwrap()
+        assert len(triplets) > 0
 
 
 def test_extract_triplets_gliner2(mock_gliner):
-    triplets = text_processing.extract_triplets(
-        "Alice works at Google", use_gliner2=True
-    ).unwrap()
+    with patch("nimem.core.model_loader.get_model", return_value=mock_gliner):
+        model_loader.get_model.cache_clear()
+        triplets = text_processing.extract_triplets(
+            "Alice works at Google", use_gliner2=True
+        ).unwrap()
 
-    mock_gliner.extract_relations.assert_called_once()
-    assert len(triplets) == 2
+        mock_gliner.extract_relations.assert_called_once()
+        assert len(triplets) == 2
 
-    assert triplets[0].subject == "Alice"
-    assert triplets[0].relation == "knows"
-    assert triplets[0].object == "Bob"
+        assert triplets[0].subject == "Alice"
+        assert triplets[0].relation == "knows"
+        assert triplets[0].object == "Bob"
 
-    assert triplets[1].subject == "Alice"
-    assert triplets[1].relation == "works_for"
-    assert triplets[1].object == "Google"
+        assert triplets[1].subject == "Alice"
+        assert triplets[1].relation == "works_for"
+        assert triplets[1].object == "Google"
 
 
 def test_resolve_coreferences(mock_coref):
-    text = "Alice works at Google. Alice knows Bob. He is happy."
-    res = text_processing.resolve_coreferences(text).unwrap()
-    assert "He" not in res
-    assert res.count("Alice") >= 2
+    with patch("nimem.core.model_loader.get_model", return_value=mock_coref):
+        model_loader.get_model.cache_clear()
+        text = "Alice works at Google. Alice knows Bob. He is happy."
+        res = text_processing.resolve_coreferences(text).unwrap()
+        assert "He" not in res
+        assert res.count("Alice") >= 2
 
 
 def test_pipeline_heuristic(mock_spacy, mock_coref):
-    res = text_processing.process_text_pipeline("Input text")
-    assert isinstance(res, Success)
-    _, triplets = res.unwrap()
-    assert len(triplets) >= 0
+    def get_model_side_effect(name):
+        if name == "spacy":
+            return mock_spacy
+        elif name == "fastcoref":
+            return mock_coref
+        raise ValueError(f"Unknown model: {name}")
+
+    with patch("nimem.core.model_loader.get_model", side_effect=get_model_side_effect):
+        model_loader.get_model.cache_clear()
+        res = text_processing.process_text_pipeline("Input text")
+        assert isinstance(res, Success)
+        _, triplets = res.unwrap()
+        assert len(triplets) >= 0
 
 
 def test_pipeline_gliner2(mock_gliner):
-    res = text_processing.process_text_pipeline("Input text", use_gliner2=True)
-    assert isinstance(res, Success)
-    _, triplets = res.unwrap()
-    assert len(triplets) == 2
+    with patch("nimem.core.model_loader.get_model", return_value=mock_gliner):
+        model_loader.get_model.cache_clear()
+        res = text_processing.process_text_pipeline("Input text", use_gliner2=True)
+        assert isinstance(res, Success)
+        _, triplets = res.unwrap()
+        assert len(triplets) == 2

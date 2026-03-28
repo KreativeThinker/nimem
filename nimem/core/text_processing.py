@@ -3,11 +3,32 @@ from typing import Tuple, List
 
 from returns.result import Result
 
-from .schema import Triple
+from .schema import Triple, Entity
 from . import relation_extraction
 from . import coreference
+from . import entity_recognition
 
 logger = logging.getLogger(__name__)
+
+
+def extract_entities_spacy(text: str) -> List[Entity]:
+    return entity_recognition.extract_entities_spacy(text)
+
+
+def extract_entities_gliner(
+    text: str,
+    include_confidence: bool = False,
+    include_spans: bool = False,
+) -> List[Entity]:
+    return entity_recognition.extract_entities_gliner(
+        text,
+        include_confidence=include_confidence,
+        include_spans=include_spans,
+    )
+
+
+def extract_relations_spacy(text: str, entities: List[Entity]) -> List[Triple]:
+    return relation_extraction.extract_relations_spacy(text, entities)
 
 
 def extract_triplets(
@@ -36,3 +57,4 @@ def process_text_pipeline(
 
 
 Triple = Triple
+Entity = Entity
