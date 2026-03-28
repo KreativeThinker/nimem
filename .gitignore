@@ -6,8 +6,17 @@ dist/
 wheels/
 *.egg-info
 
+# caches
+.infinity_cache
+.pytest_cache
+.ruff_cache
+
+# editors
+.vscode
+
 # Virtual environments
 .venv
 test_nimem.db
 TEST_INVALIDATION.txt
 context.md
+example.py

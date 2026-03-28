@@ -1,6 +1,6 @@
 from nimem.core.text_processing import extract_triplets, process_text_pipeline
 
-text = "John works for Apple Inc. and lives in San Francisco. Alice founded SpaceX."
+text = "John works for Apple Inc. and lives in San Francisco. Alice founded SpaceX. Sarah works for Google. Sarah lives in london. Bob  "
 
 # Default: spaCy NER (en_core_web_md) + heuristic relation extraction
 result = extract_triplets(text)
@@ -17,7 +17,7 @@ for t in result.unwrap():
 # Full pipeline with coreference resolution
 long_text = "John works for Apple Inc. He lives in San Francisco."
 resolved, triplets = process_text_pipeline(
-    long_text, use_coref=False, use_gliner2=False
+    long_text, use_coref=False, use_gliner2=True
 ).unwrap()
 print(f"\n=== Pipeline (coref) ===")
 print(f"Resolved: {resolved}")

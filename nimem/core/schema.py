@@ -1,3 +1,12 @@
+from typing import NamedTuple
+
+
+class Triple(NamedTuple):
+    subject: str
+    relation: str
+    object: str
+
+
 SPACY_MODEL = "en_core_web_md"
 
 SPACY_LABEL_MAP = {
